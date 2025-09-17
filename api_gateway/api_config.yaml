@@ -1,0 +1,262 @@
+swagger: '2.0'
+info:
+  title: Anomaly Detection API
+  description: High-performance anomaly detection with caching
+  version: 1.0.0
+
+security:
+  - api_key: []
+
+securityDefinitions:
+  api_key:
+    type: apiKey
+    name: x-api-key
+    in: header
+
+x-google-backend:
+  address: https://${BACKEND_SERVICE}-${REGION}-run.googleapis.com
+  protocol: h2
+  deadline: 30.0
+  loadBalancingStrategy:
+    name: LEAST_LATENCY    # Changed to latency-based load balancing
+    warmupDuration: 30s
+  pathTranslation: APPEND_PATH_TO_ADDRESS
+
+x-google-management:
+  metrics:
+    - name: "requests"
+      displayName: "Requests"
+      valueType: INT64
+      metricKind: DELTA
+  quota:
+    limits:
+      - name: "requests-per-project"
+        metric: "requests"
+        unit: "1/min"
+        values:
+          STANDARD: 1000
+
+paths:
+  /fit/{series_id}:
+    post:
+      summary: Train anomaly detection model
+      operationId: Trainining_fit
+      x-google-backend:
+        address: http://${VM_TRAINING_IP}:8000
+        deadline: 60.0
+        pathTranslation: APPEND_PATH_TO_ADDRESS
+      parameters:
+        - name: series_id
+          in: path
+          required: true
+          type: string
+        - name: request
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/TrainData'
+      responses:
+        200:
+          description: Model trained successfully
+          schema:
+            $ref: '#/definitions/TrainResponse'
+        400:
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        500:
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /predict/{series_id}:
+    post:
+      summary: Make prediction using trained model
+      operationId: Prediction_predict
+      x-google-backend:
+        address: http://${VM_INFERENCE_IP}:8000
+        deadline: 5.0  # Strict latency requirement
+        pathTranslation: APPEND_PATH_TO_ADDRESS
+      parameters:
+        - name: series_id
+          in: path
+          required: true
+          type: string
+        - name: version
+          in: query
+          required: false
+          type: string
+          description: Model version (optional)
+        - name: request
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/PredictData'
+      responses:
+        200:
+          description: Prediction successful
+          schema:
+            $ref: '#/definitions/PredictResponse'
+        404:
+          description: Model not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        500:
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /healthcheck:
+    get:
+      summary: System health check
+      operationId: HealthCheck_healthcheck
+      x-google-backend:
+        address: http://${VM_HEALTHCHECK_IP}:8000
+        path: /v1/healthcheck
+        pathTranslation: CONSTANT_ADDRESS
+      responses:
+        200:
+          description: System is healthy
+          schema:
+            $ref: '#/definitions/HealthCheckResponse'
+        503:
+          description: System unhealthy
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /plot:
+    get:
+      summary: Get training data series for visualization
+      operationId: getPlot
+      x-google-backend:
+        address: http://${VM_PLOT_IP}:8000
+        deadline: 10.0
+        pathTranslation: APPEND_PATH_TO_ADDRESS
+      parameters:
+        - name: series_id
+          in: query
+          required: true
+          type: string
+          description: Series ID (required)
+        - name: version
+          in: query
+          required: false
+          type: string
+          description: Model version (optional, defaults to most recent)
+      responses:
+        200:
+          description: Training data series retrieved successfully
+          schema:
+            $ref: '#/definitions/PlotResponse'
+        404:
+          description: Training data not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        500:
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+definitions:
+  TrainData:
+    type: object
+    required:
+      - timestamps
+      - values
+    properties:
+      timestamps:
+        type: array
+        items:
+          type: integer
+        description: Unix timestamps
+      values:
+        type: array
+        items:
+          type: number
+        description: Time series values
+
+  TrainResponse:
+    type: object
+    required:
+      - series_id
+      - version
+      - points_used
+    properties:
+      series_id:
+        type: string
+      version:
+        type: string
+      points_used:
+        type: integer
+
+  PredictData:
+    type: object
+    required:
+      - timestamp
+      - value
+    properties:
+      timestamp:
+        type: string
+        description: Unix timestamp
+      value:
+        type: number
+        description: Value to check for anomaly
+
+  PredictResponse:
+    type: object
+    required:
+      - anomaly
+      - model_version
+    properties:
+      anomaly:
+        type: boolean
+      model_version:
+        type: string
+
+  HealthCheckResponse:
+    type: object
+    required:
+      - series_trained
+      - inference_latency_ms
+      - training_latency_ms
+    properties:
+      series_trained:
+        type: integer
+      inference_latency_ms:
+        $ref: '#/definitions/Metrics'
+      training_latency_ms:
+        $ref: '#/definitions/Metrics'
+
+  Metrics:
+    type: object
+    properties:
+      avg:
+        type: number
+      p95:
+        type: number
+
+  PlotResponse:
+    type: object
+    properties:
+      series_id:
+        type: string
+      version:
+        type: string
+      timestamps:
+        type: array
+        items:
+          type: integer
+        description: Unix timestamps of training data
+      values:
+        type: array
+        items:
+          type: number
+        description: Values of training data
+      data_points_count:
+        type: integer
+
+  ErrorResponse:
+    type: object
+    properties:
+      detail:
+        type: string

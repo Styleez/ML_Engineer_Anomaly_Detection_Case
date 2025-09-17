@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "alert_rules.yml"
+
+scrape_configs:
+  # Disable all scraping for testing - services don't have /metrics endpoints
+  # Uncomment and configure when metrics are implemented

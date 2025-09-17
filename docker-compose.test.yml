@@ -1,0 +1,146 @@
+# =====================================
+# SIMPLIFIED 3-VM ARCHITECTURE
+# =====================================
+# Apenas: Training, Inference, Monitoring + Database
+
+services:
+  # =====================================
+  # DATABASE (PostgreSQL)
+  # =====================================
+  database:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_DB: anomaly_detection
+      POSTGRES_USER: anomaly_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anomaly_user -d anomaly_detection"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      microservices_network:
+        ipv4_address: 172.30.1.10
+
+  # =====================================
+  # TRAINING SERVICE
+  # =====================================
+  training-service:
+    build:
+      context: .
+      dockerfile: services/training_service/Dockerfile
+    container_name: training_service
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://anomaly_user:test_password@database:5432/anomaly_detection
+      - ENVIRONMENT=test
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      microservices_network:
+        ipv4_address: 172.30.1.20
+
+  # =====================================
+  # INFERENCE SERVICE (with internal Redis)
+  # =====================================
+  inference-service:
+    build:
+      context: .
+      dockerfile: services/inference_service/Dockerfile
+    container_name: inference_service
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql://anomaly_user:test_password@database:5432/anomaly_detection
+      - REDIS_HOST=localhost
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - ENVIRONMENT=test
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      microservices_network:
+        ipv4_address: 172.30.1.30
+
+  # =====================================
+  # MONITORING SERVICE (plot + dashboard)
+  # =====================================
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: services/monitoring_service/Dockerfile
+    container_name: monitoring_service
+    ports:
+      - "8002:8000"
+    environment:
+      - DATABASE_URL=postgresql://anomaly_user:test_password@database:5432/anomaly_detection
+      - TRAINING_SERVICE_URL=http://training-service:8000
+      - INFERENCE_SERVICE_URL=http://inference-service:8000
+      - ENVIRONMENT=test
+    depends_on:
+      database:
+        condition: service_healthy
+      training-service:
+        condition: service_healthy
+      inference-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      microservices_network:
+        ipv4_address: 172.30.1.40
+
+  # =====================================
+  # API GATEWAY SIMULATOR (Nginx)
+  # =====================================
+  api-gateway:
+    image: nginx:alpine
+    container_name: api_gateway
+    ports:
+      - "80:80"
+    volumes:
+      - ./tests/fixtures/nginx-api-gateway.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      training-service:
+        condition: service_healthy
+      inference-service:
+        condition: service_healthy
+      monitoring-service:
+        condition: service_healthy
+    networks:
+      microservices_network:
+        ipv4_address: 172.30.1.50
+
+volumes:
+  postgres_data:
+
+networks:
+  microservices_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.1.0/24

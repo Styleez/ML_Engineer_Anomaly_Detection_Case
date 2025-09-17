@@ -1,0 +1,39 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Inference Service metrics
+  - job_name: 'inference-service'
+    static_configs:
+      - targets: ['inference-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Training Service metrics
+  - job_name: 'training-service'
+    static_configs:
+      - targets: ['training-service:8000']
+    metrics_path: '/metrics'
+
+  # Plot Service metrics
+  - job_name: 'plot-service'
+    static_configs:
+      - targets: ['plot-service:8000']
+    metrics_path: '/metrics'
+
+  # Healthcheck Service metrics
+  - job_name: 'healthcheck-service'
+    static_configs:
+      - targets: ['healthcheck-service:8000']
+    metrics_path: '/metrics'
+
+  # Database metrics
+  - job_name: 'database'
+    static_configs:
+      - targets: ['database-vm:5432']
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
