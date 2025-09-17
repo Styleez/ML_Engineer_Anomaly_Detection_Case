@@ -16,7 +16,7 @@ class TestTrainingServiceMocked:
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "series_id": "test_sensor_001",
-            "version": "1.0",
+            "model_version": "v1",
             "points_used": 4
         }
         mock_post.return_value = mock_response
@@ -152,7 +152,7 @@ class TestPlotServiceMocked:
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "series_id": "test_sensor_001",
-            "version": "1.0",
+            "model_version": "v1",
             "timestamps": [1700000000, 1700000060, 1700000120, 1700000180],
             "values": [42.1, 42.3, 41.9, 42.5],
             "data_points_count": 4
@@ -165,7 +165,7 @@ class TestPlotServiceMocked:
         assert response.status_code == 200
         data = response.json()
         assert data["series_id"] == "test_sensor_001"
-        assert data["version"] == "1.0"
+        assert data["model_version"] == "v1"
         assert len(data["timestamps"]) == 4
         assert len(data["values"]) == 4
         assert data["data_points_count"] == 4

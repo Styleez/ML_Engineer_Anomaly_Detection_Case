@@ -1,11 +1,19 @@
 """
 Unit tests for Training Service
 """
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch
-import sys
 import os
+import sys
+
+# Configure test environment to use Docker containers
+os.environ["ENVIRONMENT"] = "test"
+
+# Import test configuration
+from tests.config import DATABASE_URL
+os.environ["DATABASE_URL"] = DATABASE_URL
+
+import pytest
+import requests
+from unittest.mock import patch
 
 # Add services to path
 training_service_path = os.path.join(os.path.dirname(__file__), "..", "..", "services", "training_service")
@@ -21,19 +29,18 @@ training_main = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(training_main)
 
 @pytest.fixture
-def training_client(override_get_db, environment_variables):
-    """Training service test client"""
-    from shared.database.database import get_db
-    training_main.app.dependency_overrides[get_db] = override_get_db
-    return TestClient(training_main.app)
+def training_client(environment_variables):
+    """Training service test client - connects to running Docker service"""
+    from tests.config import TRAINING_SERVICE_URL
+    return TRAINING_SERVICE_URL
 
 class TestTrainingService:
     """Training Service unit tests"""
     
     def test_fit_model_success(self, training_client, sample_training_data, sample_series_id):
         """Test successful model training"""
-        response = training_client.post(
-            f"/fit/{sample_series_id}",
+        response = requests.post(
+            f"{training_client}/fit/{sample_series_id}",
             json=sample_training_data
         )
         
@@ -56,8 +63,8 @@ class TestTrainingService:
             "threshold": 3.0
         }
 
-        response = training_client.post(
-            f"/fit/{sample_series_id}",
+        response = requests.post(
+            f"{training_client}/fit/{sample_series_id}",
             json=invalid_data
         )
 
@@ -76,8 +83,8 @@ class TestTrainingService:
             "threshold": 3.0
         }
         
-        response = training_client.post(
-            f"/fit/{sample_series_id}",
+        response = requests.post(
+            f"{training_client}/fit/{sample_series_id}",
             json=insufficient_data
         )
         
@@ -91,8 +98,8 @@ class TestTrainingService:
             "threshold": 3.0
         }
         
-        response = training_client.post(
-            f"/fit/{sample_series_id}",
+        response = requests.post(
+            f"{training_client}/fit/{sample_series_id}",
             json=constant_data
         )
         
@@ -100,21 +107,25 @@ class TestTrainingService:
 
     def test_healthcheck(self, training_client):
         """Test training service health check"""
-        response = training_client.get("/healthcheck")
+        response = requests.get(f"{training_client}/healthcheck")
         
         assert response.status_code == 200
         data = response.json()
-        assert "series_trained" in data
-        assert "inference_latency_ms" in data
-        assert "training_latency_ms" in data
+        
+        # Check expected fields in healthcheck response
+        assert data["service"] == "training"
+        assert data["status"] == "healthy"
+        assert "timestamp" in data
+        assert "database_connection" in data
+        assert "metrics" in data
 
     def test_fit_model_creates_database_records(self, training_client, sample_training_data, test_db):
         """Test that training creates proper database records"""
         import uuid
         unique_series_id = f"test_sensor_db_{uuid.uuid4().hex[:8]}"
         
-        response = training_client.post(
-            f"/fit/{unique_series_id}",
+        response = requests.post(
+            f"{training_client}/fit/{unique_series_id}",
             json=sample_training_data
         )
 

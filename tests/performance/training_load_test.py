@@ -7,12 +7,24 @@ import time
 import numpy as np
 import json
 import statistics
+import os
+import sys
 from datetime import datetime
 from typing import List, Dict, Any
 
-# Service configuration
-TRAINING_URL = "http://localhost:8000"
-REQUEST_TIMEOUT = 60  # seconds
+# Add project root to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# Import professional test configuration
+from tests.config import (
+    TRAINING_SERVICE_URL,
+    TRAINING_TIMEOUT,
+    TEST_SERIES_PREFIX
+)
+
+# Service configuration from professional config
+TRAINING_URL = TRAINING_SERVICE_URL
+REQUEST_TIMEOUT = TRAINING_TIMEOUT  # seconds
 CONCURRENT_LIMIT = 20  # Maximum concurrent connections
 
 class TrainingLoadTest:
@@ -50,10 +62,17 @@ class TrainingLoadTest:
             return latency
             
         except Exception as e:
-            print(f"❌ Error training model: {e}")
+            error_msg = str(e)
+            print(f"❌ Error training model: {error_msg}")
+            
+            # Stop test if HTTP 500 errors occur
+            if "HTTP 500" in error_msg:
+                print(f"🛑 Stopping load test due to HTTP 500 errors")
+                raise SystemExit("Load test stopped due to HTTP 500 Internal Server Error")
+            
             raise
 
-    async def run_load_test(self, concurrent_models: int, duration_seconds: int = 30):
+    async def run_load_test(self, concurrent_models: int, duration_seconds: int = 10):
         """Run load test training multiple models concurrently"""
         print(f"\n🔥 Running training load test with {concurrent_models} concurrent models for {duration_seconds}s...")
         
@@ -70,7 +89,7 @@ class TrainingLoadTest:
             async def controlled_request(model_idx: int):
                 async with semaphore:
                     try:
-                        series_id = f"load_test_sensor_{model_idx}"
+                        series_id = f"{TEST_SERIES_PREFIX}_load_training_{model_idx}"
                         latency = await self.train_model(session, series_id)
                         self.results[test_key].append(latency)
                     except Exception:
@@ -118,7 +137,7 @@ async def main():
     concurrent_models = [1, 10, 100]
     
     for models in concurrent_models:
-        await load_test.run_load_test(models, duration_seconds=60)
+        await load_test.run_load_test(models, duration_seconds=10)
         # Longer delay between training tests
         await asyncio.sleep(10)
 

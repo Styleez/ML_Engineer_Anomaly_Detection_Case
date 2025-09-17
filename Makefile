@@ -67,11 +67,19 @@ logs-healthcheck: ## Show healthcheck service logs
 
 # Health checks
 health: ## Check health of all services
-	@echo "Checking service health..."
-	@curl -s http://localhost:8000/healthcheck | python -m json.tool || echo "❌ Training service down"
-	@curl -s http://localhost:8001/healthcheck | python -m json.tool || echo "❌ Inference service down"
-	@curl -s http://localhost:8002/healthcheck | python -m json.tool || echo "❌ Monitoring service down"
-	@curl -s http://localhost:8003/healthcheck | python -m json.tool || echo "❌ Healthcheck service down"
+	@echo "🔍 Checking service health..."
+	@python -c "import requests; import json; services = [('Training', 8000), ('Inference', 8001), ('Monitoring', 8002)]; [print(f'✅ {name}: {requests.get(f\"http://localhost:{port}/healthcheck\").json().get(\"status\", \"unknown\")}') if requests.get(f'http://localhost:{port}/healthcheck', timeout=5).status_code == 200 else print(f'❌ {name}: Down') for name, port in services]"
+
+status: ## Full system status (health + database check)
+	@echo "🔍 System Status Check"
+	@echo "====================="
+	@make health
+	@echo ""
+	@echo "💾 Database Status:"
+	@docker exec postgres_db psql -U anomaly_user -d anomaly_detection -c "SELECT 'Tables: ' || count(*) FROM information_schema.tables WHERE table_schema = 'public';" -t 2>/dev/null && echo "✅ Database tables created" || echo "❌ Database issues"
+	@echo ""
+	@echo "🧪 Quick Test:"
+	@python -c "import requests; r = requests.post('http://localhost:8000/fit/health_test', json={'timestamps': [1700000000, 1700000060, 1700000120], 'values': [42.0, 42.1, 41.9], 'threshold': 3.0}); print('✅ Training works' if r.status_code == 200 else f'❌ Training failed: {r.status_code}')" 2>/dev/null || echo "❌ Training test failed"
 
 dashboard: ## Open monitoring dashboard in browser
 	@echo "Opening dashboard..."
@@ -110,27 +118,58 @@ dev-setup: install-dev db-migrate ## Complete development setup
 # Quick development workflow
 dev: docker-up health dashboard ## Start development environment and open dashboard
 
+# Simplified commands for easy use
+start: ## Start all services (one command to rule them all)
+	@echo "🚀 Starting Anomaly Detection System..."
+	docker-compose -f docker-compose.test.yml up -d --build
+	@echo "⏳ Waiting for database initialization..."
+	@sleep 10
+	@echo "⏳ Waiting for services to be ready..."
+	@sleep 15
+	@echo "🔍 Verifying system health..."
+	@python -c "import requests; import time; import sys; [requests.get('http://localhost:800{}/healthcheck'.format(i)).raise_for_status() for i in [0,1,2]]" 2>/dev/null && echo "✅ All services healthy!" || echo "⚠️  Some services may still be starting..."
+	@echo ""
+	@echo "🔗 Service URLs:"
+	@echo "   • Training:   http://localhost:8000/docs"
+	@echo "   • Inference:  http://localhost:8001/docs"
+	@echo "   • Monitoring: http://localhost:8002/dashboard"
+	@echo "   • API Gateway: http://localhost:80"
+	@echo ""
+	@echo "✅ System is ready! You can now run 'make test-all' to verify everything works."
+
+stop: ## Stop all services
+	docker-compose -f docker-compose.test.yml down -v
+
+test-all: ## Run all tests (unit + integration + performance)
+	@echo "🧪 Running all tests..."
+	@echo ""
+	@echo "1️⃣ Unit Tests (38 tests):"
+	python -m pytest tests/unit/ -v --tb=short
+	@echo ""
+	@echo "2️⃣ Integration Tests (23 tests):"
+	@echo "   Waiting 5 seconds for services to stabilize..."
+	@sleep 5
+	python -m pytest tests/integration/ -v --tb=short
+	@echo ""
+	@echo "3️⃣ Performance Test (light load):"
+	python -c "import sys; sys.path.append('.'); from tests.performance.inference_load_test import InferenceLoadTest; import asyncio; test = InferenceLoadTest(); asyncio.run(test.run_load_test(100, 10))"
+	@echo ""
+	@echo "✅ All tests completed!"
+
+test-integration: ## Run integration tests only (requires Docker services)
+	@echo "🧪 Running integration tests..."
+	@echo "⏳ Checking service availability..."
+	@make status >/dev/null 2>&1 && echo "✅ Services are ready" || (echo "❌ Services not ready. Run 'make start' first"; exit 1)
+	python -m pytest tests/integration/ -v --tb=short
+
 # Performance testing with different loads
 perf-light: ## Run light performance test
-	cd tests/performance && python -c "
-import asyncio
-from inference_load_test import InferenceLoadTest
-async def main():
-    test = InferenceLoadTest()
-    await test.run_load_test(10, 30)  # 10 users, 30 seconds
-asyncio.run(main())
-"
+	python -c "import sys; sys.path.append('.'); from tests.performance.inference_load_test import InferenceLoadTest; import asyncio; test = InferenceLoadTest(); asyncio.run(test.run_load_test(10, 30))"
 
 perf-heavy: ## Run heavy performance test
-	cd tests/performance && python -c "
-import asyncio
-from inference_load_test import InferenceLoadTest
-async def main():
-    test = InferenceLoadTest()
-    for users in [50, 100, 200]:
-        await test.run_load_test(users, 60)  # Escalating load
-asyncio.run(main())
-"
+	@echo "🔥 Running heavy performance tests..."
+	python -c "import sys; sys.path.append('.'); from tests.performance.inference_load_test import InferenceLoadTest; import asyncio; test = InferenceLoadTest(); asyncio.run(test.run_load_test(50, 60))"
+	@echo "📊 Heavy load test completed"
 
 # Cleanup
 clean: ## Clean up Docker and Python cache

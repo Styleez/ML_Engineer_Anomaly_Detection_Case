@@ -1,0 +1,81 @@
+---
+description: Performance optimization guidelines for high-throughput scenarios
+---
+
+# Performance Optimization Guidelines
+
+## Performance Targets
+- **Throughput**: 15M predictions/day = ~180 RPS sustained
+- **Latency**: P95 < 100ms for inference endpoints  
+- **Concurrency**: Support simultaneous training + inference
+- **Scalability**: Horizontal scaling with load balancer
+
+## Optimization Strategy
+
+### 1. Microservices Architecture
+Use specialized services for different workloads:
+
+**Inference Service** ([services/inference_service/](mdc:services/inference_service/)): 
+- Redis cache for model parameters
+- Minimal database hits for predictions
+- Optimized for low latency and high throughput
+
+**Training Service** ([services/training_service/](mdc:services/training_service/)):
+- Database persistence for models and training data
+- Redis cache synchronization after training
+- Optimized for model accuracy and versioning
+
+**Plot Service** ([services/plot_service/](mdc:services/plot_service/)):
+- Read-only database queries
+- Optimized for data retrieval
+
+### 2. Caching Strategy
+**Redis > Database** hierarchy (microservices):
+- **Redis**: Model parameters cache (inference service)
+- **Database**: Authoritative storage ([shared/database/](mdc:shared/database/))
+- **Cache synchronization**: Training service updates Redis after model training
+
+### 3. Database Optimization ([shared/database/database.py](mdc:shared/database/database.py))
+- Connection pooling (5-10 connections per service)
+- Async operations only
+- Optimized queries for training data retrieval
+- Proper indexing for series_id and model_version
+
+### 4. Load Balancing ([nginx.conf](mdc:nginx.conf))
+- Route to appropriate microservice based on endpoint
+- Rate limiting: 200 RPS inference, 5 RPS training
+- Health check routing to individual services
+- Connection keep-alive
+
+### 5. Metrics Without Performance Impact
+- Async metrics collection
+- Sampling for high-volume endpoints
+- Prometheus push vs pull
+- Batch database writes
+
+## Performance Testing
+Always measure before optimizing:
+
+```python
+# Target benchmarks
+def test_inference_performance():
+    assert p95_latency < 100  # milliseconds
+    assert throughput > 180   # RPS
+    assert memory_usage < 256 # MB per instance
+```
+
+## Red Flags to Avoid
+- Synchronous database calls in inference path
+- Heavy logging in hot paths  
+- Blocking I/O operations
+- Large object serialization per request
+- Cache misses in inference mode
+
+## Deployment Architecture
+Use [docker-compose-optimized.yml](mdc:docker-compose-optimized.yml):
+- Multiple inference service instances (CPU optimized)
+- Training service instance (memory optimized)  
+- Plot service instance (I/O optimized)
+- Healthcheck service instance
+- Nginx load balancer
+- Redis + PostgreSQL backends

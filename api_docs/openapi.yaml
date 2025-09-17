@@ -1,0 +1,507 @@
+openapi: 3.0.3
+info:
+  title: Anomaly Detection API
+  description: |
+    A high-performance microservices-based anomaly detection system for time series data.
+    
+    ## Features
+    - **Real-time inference** with P95 < 100ms latency
+    - **Scalable training** with model versioning
+    - **Interactive monitoring** dashboard
+    - **Redis caching** for optimal performance
+    - **PostgreSQL persistence** for reliability
+    
+    ## Architecture
+    - **Training Service** (port 8000): Model training and persistence
+    - **Inference Service** (port 8001): Real-time predictions with Redis cache
+    - **Monitoring Service** (port 8002): Dashboards, plots, and system health
+    - **API Gateway** (port 80): Load balancing and routing
+    
+    ## Performance Requirements
+    - **Throughput**: 180+ requests/second
+    - **Latency**: P95 < 100ms for inference
+    - **Availability**: 99.9% uptime
+    - **Scalability**: Horizontal scaling per service
+    
+  version: 1.0.0
+
+servers:
+  - url: http://localhost
+    description: Local development (API Gateway)
+  - url: http://localhost:8000
+    description: Training Service
+  - url: http://localhost:8001
+    description: Inference Service
+  - url: http://localhost:8002
+    description: Monitoring Service
+
+tags:
+  - name: training
+    description: Model training operations
+  - name: inference
+    description: Real-time anomaly prediction
+  - name: monitoring
+    description: System monitoring and visualization
+  - name: health
+    description: Service health checks
+
+paths:
+  # Training Service Endpoints
+  /fit/{series_id}:
+    post:
+      tags: [training]
+      summary: Train anomaly detection model
+      description: |
+        Trains a 3-sigma anomaly detection model for the specified time series.
+        
+        **Performance**: Can be slower (training is computationally expensive)
+        **Persistence**: Model stored in PostgreSQL with versioning
+        **Caching**: Model parameters cached in Redis for fast inference
+        
+      parameters:
+        - name: series_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9_-]+$'
+          description: Unique identifier for the time series
+          example: "sensor_temperature_01"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnomalyTrainRequest'
+      responses:
+        '200':
+          description: Model trained successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnomalyTrainResponse'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Training failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Inference Service Endpoints
+  /predict/{series_id}:
+    post:
+      tags: [inference]
+      summary: Predict anomaly for data point
+      description: |
+        Fast anomaly prediction for a single data point using trained model.
+        
+        **Performance**: Critical path - P95 < 100ms, 180+ RPS
+        **Caching**: Redis-first strategy with database fallback
+        **Versioning**: Uses latest model version unless specified
+        
+      parameters:
+        - name: series_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Time series identifier
+          example: "sensor_temperature_01"
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Model version (uses latest if not specified)
+          example: "v1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnomalyPredictRequest'
+      responses:
+        '200':
+          description: Prediction completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnomalyPredictResponse'
+        '404':
+          description: Model not found for series
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Prediction failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Monitoring Service Endpoints
+  /plot:
+    get:
+      tags: [monitoring]
+      summary: Get training data for visualization
+      description: |
+        Returns training data points for plotting and visualization.
+        Supports version selection or returns most recent version.
+        
+      parameters:
+        - name: series_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Time series identifier
+          example: "sensor_temperature_01"
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Model version (latest if not specified)
+          example: "v1"
+      responses:
+        '200':
+          description: Training data retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnomalyPlotResponse'
+        '404':
+          description: Series or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /models:
+    get:
+      tags: [monitoring]
+      summary: List all available models
+      description: |
+        Returns all trained models grouped by series_id with their versions.
+        Used for dashboard dropdowns and model management.
+        
+      responses:
+        '200':
+          description: Models list retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelsListResponse'
+
+  /dashboard:
+    get:
+      tags: [monitoring]
+      summary: Interactive monitoring dashboard
+      description: |
+        HTML dashboard with real-time metrics, interactive plots, and system health.
+        Features Chart.js visualizations and dropdown model selection.
+        
+      responses:
+        '200':
+          description: Dashboard HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: Complete HTML dashboard
+
+  # Health Check Endpoints (All Services)
+  /healthcheck:
+    get:
+      tags: [health]
+      summary: Service health check
+      description: |
+        Returns service-specific health status and metrics.
+        Each service implements this endpoint with relevant metrics:
+        
+        - **Training Service**: Models trained, database status
+        - **Inference Service**: Cache hits, predictions count, Redis status  
+        - **Monitoring Service**: System overview, database connectivity
+        
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TrainingHealthResponse'
+                  - $ref: '#/components/schemas/InferenceHealthResponse'
+                  - $ref: '#/components/schemas/MonitoringHealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    # Request Schemas
+    AnomalyTrainRequest:
+      type: object
+      required:
+        - timestamps
+        - values
+      properties:
+        timestamps:
+          type: array
+          items:
+            type: integer
+          description: Unix timestamps in ascending order
+          example: [1609459200, 1609459260, 1609459320]
+          minItems: 10
+        values:
+          type: array
+          items:
+            type: number
+          description: Corresponding sensor values
+          example: [23.5, 24.1, 23.8]
+          minItems: 10
+        threshold:
+          type: number
+          description: Anomaly detection threshold (standard deviations)
+          example: 3.0
+          default: 3.0
+          minimum: 1.0
+          maximum: 5.0
+
+    AnomalyPredictRequest:
+      type: object
+      required:
+        - timestamp
+        - value
+      properties:
+        timestamp:
+          type: string
+          description: Unix timestamp as string
+          example: "1609459200"
+        value:
+          type: number
+          description: Sensor value to classify
+          example: 23.5
+
+    # Response Schemas
+    AnomalyTrainResponse:
+      type: object
+      properties:
+        series_id:
+          type: string
+          description: Time series identifier
+          example: "sensor_temperature_01"
+        model_version:
+          type: string
+          description: Trained model version
+          example: "v1"
+        points_used:
+          type: integer
+          description: Number of data points used for training
+          example: 150
+        timestamp:
+          type: integer
+          description: Training completion timestamp
+          example: 1609459200
+
+    AnomalyPredictResponse:
+      type: object
+      properties:
+        anomaly:
+          type: boolean
+          description: True if anomaly detected
+          example: false
+        model_version:
+          type: string
+          description: Model version used for prediction
+          example: "v1"
+        timestamp:
+          type: integer
+          description: Prediction timestamp
+          example: 1609459200
+
+    AnomalyPlotResponse:
+      type: object
+      properties:
+        series_id:
+          type: string
+          description: Time series identifier
+          example: "sensor_temperature_01"
+        model_version:
+          type: string
+          description: Model version
+          example: "v1"
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlotDataPoint'
+        model_stats:
+          type: object
+          properties:
+            data_points_count:
+              type: integer
+              example: 150
+            series_id:
+              type: string
+              example: "sensor_temperature_01"
+
+    PlotDataPoint:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          description: Unix timestamp
+          example: 1609459200
+        value:
+          type: number
+          description: Sensor value
+          example: 23.5
+        is_anomaly:
+          type: boolean
+          description: Always false for training data
+          example: false
+
+    ModelsListResponse:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelInfo'
+        total_series:
+          type: integer
+          description: Total number of series
+          example: 143
+        total_models:
+          type: integer
+          description: Total number of model versions
+          example: 143
+
+    ModelInfo:
+      type: object
+      properties:
+        series_id:
+          type: string
+          description: Time series identifier
+          example: "sensor_temperature_01"
+        versions:
+          type: array
+          items:
+            type: string
+          description: Available model versions (newest first)
+          example: ["v2", "v1"]
+
+    # Health Check Schemas
+    TrainingHealthResponse:
+      type: object
+      properties:
+        service:
+          type: string
+          example: "training"
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          example: "healthy"
+        timestamp:
+          type: integer
+          example: 1609459200
+        database_connection:
+          type: string
+          enum: [successful, failed]
+          example: "successful"
+        metrics:
+          type: object
+          properties:
+            total_models:
+              type: integer
+              example: 197
+            active_models:
+              type: integer
+              example: 143
+            models_trained_24h:
+              type: integer
+              example: 54
+
+    InferenceHealthResponse:
+      type: object
+      properties:
+        service:
+          type: string
+          example: "inference"
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          example: "healthy"
+        timestamp:
+          type: integer
+          example: 1609459200
+        redis_connection:
+          type: string
+          enum: [connected, failed]
+          example: "connected"
+        database_connection:
+          type: string
+          enum: [connected, failed]
+          example: "connected"
+        metrics:
+          type: object
+          properties:
+            active_models:
+              type: integer
+              example: 143
+            cached_models:
+              type: integer
+              example: 15
+            predictions_1h:
+              type: integer
+              example: 1250
+
+    MonitoringHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+          example: "ok"
+        service:
+          type: string
+          example: "monitoring"
+        database_connection:
+          type: string
+          enum: [successful, failed]
+          example: "successful"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-09-17T20:42:13.403667+00:00"
+
+    # Error Schema
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error description
+          example: "Model not found for series_id: sensor_xyz"
+
+  # Security Schemes (for future cloud deployment)
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+# Global security (commented for local development)
+# security:
+#   - ApiKeyAuth: []

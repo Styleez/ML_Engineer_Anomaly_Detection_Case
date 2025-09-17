@@ -26,9 +26,8 @@ class AnomalyPlotResponse(BaseMLResponseModel):
                 ],
                 "model_stats": {"mean": 42.1, "std": 1.5, "threshold": 3.0},
                 "summary": {"total_points": 100, "anomalies_count": 5, "anomaly_rate": 0.05},
-                "model_version": "1.0",
-                "timestamp": "2024-01-01T12:00:00Z",
-                "version": "1.0"
+                "model_version": "v1",
+                "timestamp": 1704110400
             }
         }
 

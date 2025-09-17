@@ -18,7 +18,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U anomaly_user -d anomaly_detection"]
       interval: 10s
@@ -44,6 +43,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
       interval: 30s
@@ -73,6 +74,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
       interval: 15s
@@ -101,6 +104,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       training-service:
         condition: service_healthy
       inference-service:
@@ -113,6 +118,39 @@ services:
     networks:
       microservices_network:
         ipv4_address: 172.30.1.40
+
+  # =====================================
+  # DATABASE INITIALIZATION
+  # =====================================
+  db-init:
+    build:
+      context: .
+      dockerfile: services/training_service/Dockerfile
+    container_name: db_init
+    environment:
+      - DATABASE_URL=postgresql://anomaly_user:test_password@database:5432/anomaly_detection
+      - DB_HOST=database
+      - DB_PORT=5432
+      - DB_USER=anomaly_user
+      - DB_PASSWORD=test_password
+      - DB_NAME=anomaly_detection
+      - PYTHONPATH=/app:/app/shared
+    depends_on:
+      database:
+        condition: service_healthy
+    command: >
+      sh -c "
+        pip install -r /app/database/requirements.txt &&
+        python /app/database/init_database.py
+      "
+    volumes:
+      - ./database:/app/database
+      - ./shared:/app/shared
+      - .:/app
+    networks:
+      microservices_network:
+        ipv4_address: 172.30.1.60
+    restart: "no"  # Run once and exit
 
   # =====================================
   # API GATEWAY SIMULATOR (Nginx)

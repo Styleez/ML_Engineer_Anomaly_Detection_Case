@@ -18,7 +18,6 @@ class BaseRequestModel(BaseAPIModel):
 class BaseResponseModel(BaseAPIModel):
     """Base for all API responses"""
     timestamp: int = Field(default_factory=lambda: int(datetime.now(timezone.utc).timestamp()), description="Unix timestamp")
-    version: str = Field(default="v1", description="API version")
     
 class BaseMLRequestModel(BaseRequestModel):
     """Base for ML-related requests"""

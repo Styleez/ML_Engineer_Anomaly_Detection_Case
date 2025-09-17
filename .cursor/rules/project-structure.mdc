@@ -1,0 +1,43 @@
+---
+alwaysApply: true
+---
+
+# Anomaly Detection API - Microservices Architecture
+
+This is a high-performance anomaly detection API built with microservices architecture:
+
+## Microservices
+- [services/training_service/](mdc:services/training_service/) - Model training service (`/fit/{series_id}`)
+- [services/inference_service/](mdc:services/inference_service/) - Real-time prediction service (`/predict/{series_id}`)
+- [services/plot_service/](mdc:services/plot_service/) - Data visualization service (`/plot`)
+- [services/healthcheck_service/](mdc:services/healthcheck_service/) - System health monitoring
+
+## Shared Components
+- [shared/models/anomaly/](mdc:shared/models/anomaly/) - ML models and 3-sigma algorithm
+- [shared/database/](mdc:shared/database/) - Database models and connections (SQLAlchemy)
+- [shared/core/](mdc:shared/core/) - Base classes and data models (Pydantic)
+- [shared/utils/](mdc:shared/utils/) - Utility models and helpers
+
+## Infrastructure
+- [docker-compose.yml](mdc:docker-compose.yml) - Basic Docker setup
+- [docker-compose-optimized.yml](mdc:docker-compose-optimized.yml) - Optimized multi-service setup
+- [nginx.conf](mdc:nginx.conf) - Load balancer configuration
+- [Dockerfile](mdc:Dockerfile) - Container build instructions
+
+## Requirements & Documentation
+- [docs/](mdc:docs/) - Project requirements and specifications
+- [requirements.txt](mdc:requirements.txt) - Python dependencies
+- [requirements-dev.txt](mdc:requirements-dev.txt) - Development dependencies
+
+## Configuration & Data
+- [config/env_config.yaml](mdc:config/env_config.yaml) - Environment configuration
+- [api_gateway/api_config.yaml](mdc:api_gateway/api_config.yaml) - API Gateway configuration
+- [dataset/](mdc:dataset/) - CSV files with real sensor data for testing
+
+## Performance Requirements
+- 15M inferences/day (~180 RPS)
+- P95 latency < 100ms
+- Support concurrent training and inference
+- Microservices architecture for horizontal scaling
+- Redis caching for model parameters (inference service)
+- Database persistence for model versioning

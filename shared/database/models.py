@@ -24,6 +24,9 @@ class TrainedModel(Base):
     training_points = Column(Integer, nullable=False)
     training_data_stats = Column(JSON)  # Store training statistics
     
+    # Performance metrics (in milliseconds)
+    training_latency_ms = Column(Float, nullable=True)  # Time to train the model
+    
     # Timestamps (Unix format)
     created_at = Column(Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()))
     updated_at = Column(Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()))
@@ -46,15 +49,18 @@ class PredictionLog(Base):
     # Prediction data
     timestamp = Column(Integer, nullable=False)  # Unix timestamp of data point
     value = Column(Float, nullable=False)
-    is_anomaly = Column(Boolean, nullable=False)
-    confidence = Column(Float, nullable=False)
-    deviation = Column(Float, nullable=False)
+    prediction = Column(Boolean, nullable=False)  # True = anomaly, False = normal
     
     # Model used
     model_version = Column(String, nullable=False)
     
+    # Performance metrics (in milliseconds)
+    inference_latency_ms = Column(Float, nullable=True)  # Time for ML inference only
+    database_latency_ms = Column(Float, nullable=True)   # Time for database operations
+    total_latency_ms = Column(Float, nullable=True)      # Total request latency
+    
     # Prediction metadata
-    predicted_at = Column(Integer, default=lambda: int(datetime.utcnow().timestamp()))
+    created_at = Column(Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()))
 
 class TrainingData(Base):
     """Table for storing training time series data"""

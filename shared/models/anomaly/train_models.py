@@ -53,10 +53,9 @@ class AnomalyTrainResponse(BaseMLResponseModel):
         json_schema_extra={
             "example": {
                 "series_id": "sensor_001",
-                "version": "1.0",
+                "model_version": "v1",
                 "points_used": 100,
-                "timestamp": 1704110400,
-                "version": "1.0"
+                "timestamp": 1704110400
             }
         }
     )

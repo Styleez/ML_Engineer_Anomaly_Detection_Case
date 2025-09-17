@@ -42,9 +42,8 @@ class AnomalyPredictResponse(BaseMLResponseModel):
         json_schema_extra={
             "example": {
                 "anomaly": True,
-                "model_version": "1.0",
-                "timestamp": 1704110400,
-                "version": "1.0"
+                "model_version": "v1",
+                "timestamp": 1704110400
             }
         }
     )

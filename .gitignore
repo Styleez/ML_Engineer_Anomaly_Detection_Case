@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -19,8 +20,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
-.putest_cache/
 
 # Virtual environments
 venv/
@@ -33,24 +32,6 @@ env/
 .idea/
 *.swp
 *.swo
-*~
-.cursor/
-
-# Environment variables
-.env
-.env.local
-.env.development
-.env.test
-.env.production
-
-# Logs
-*.log
-logs/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
 
 # OS
 .DS_Store
@@ -59,33 +40,25 @@ Thumbs.db
 # Docker
 .dockerignore
 
-# Terraform
-*.tfstate
-*.tfstate.*
-.terraform/
-.terraform.lock.hcl
-
-# Results and temporary files
-results/*.json
-*.tmp
-*.temp
-
-# Test coverage
+# Testing
+.pytest_cache/
 .coverage
 htmlcov/
-.pytest_cache/
 
-# Jupyter Notebooks
-.ipynb_checkpoints/
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
-# GCP
-*.json
-!monitoring/grafana-dashboard-advanced.json
-!monitoring/grafana-dashboard.json
+# Logs
+*.log
+logs/
 
-# Makefile artifacts
-.make/
+# Environment variables
+.env
+.env.local
+.env.*.local
 
-# Backup files
-*.bak
-*.backup
+# Temporary files
+*.tmp
+*.temp

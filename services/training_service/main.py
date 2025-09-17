@@ -24,13 +24,20 @@ async def fit_model(
     db: Session = Depends(get_db)
 ) -> AnomalyTrainResponse:
     """Train a new model or update existing one"""
+    
+    # Start timing for training latency
+    import time
+    training_start = time.time()
+    
     try:
         # Convert request to TimeSeries
         time_series = request.to_time_series()
         
-        # Create and train model
+        # Create and train model (measure actual training time)
         model = AnomalyDetectionModel(threshold=request.threshold)
+        model_training_start = time.time()
         model.fit(time_series)
+        training_latency_ms = (time.time() - training_start) * 1000
         
         # Determine next version number for this series by finding the highest version
         all_versions = db.query(TrainedModel).filter(
@@ -69,7 +76,8 @@ async def fit_model(
             threshold=model.threshold,
             model_version=model_version,
             training_points=len(request.timestamps),
-            training_data_stats=training_stats
+            training_data_stats=training_stats,
+            training_latency_ms=training_latency_ms
         )
         
         # Mark previous models as inactive for inference (but keep for history)
@@ -116,18 +124,56 @@ async def fit_model(
 
 @app.get("/healthcheck")
 async def healthcheck(db: Session = Depends(get_db)):
+    import time
     """Training service health check endpoint"""
     try:
-        # Service-specific checks - Database only
-        training_count = db.query(TrainedModel).filter(TrainedModel.is_active == True).count()
+        # Database connectivity check
+        total_models = db.query(TrainedModel).count()
+        active_models = db.query(TrainedModel).filter(TrainedModel.is_active == True).count()
+        
+        # Recent training activity (last 24h)
+        import time
+        yesterday = int(time.time()) - 86400
+        recent_models_query = db.query(TrainedModel).filter(TrainedModel.created_at >= yesterday)
+        recent_models = recent_models_query.count()
+        
+        # Calculate training latency metrics from recent models
+        recent_models_with_latency = recent_models_query.filter(
+            TrainedModel.training_latency_ms.isnot(None)
+        ).all()
+        
+        avg_training_latency = 0
+        p95_training_latency = 0
+        
+        if recent_models_with_latency:
+            training_latencies = [m.training_latency_ms for m in recent_models_with_latency if m.training_latency_ms]
+            
+            if training_latencies:
+                avg_training_latency = sum(training_latencies) / len(training_latencies)
+                training_latencies.sort()
+                p95_index = int(len(training_latencies) * 0.95)
+                p95_training_latency = training_latencies[p95_index] if p95_index < len(training_latencies) else training_latencies[-1]
         
         return {
-            "series_trained": training_count,
-            "inference_latency_ms": {"avg": 45.2, "p95": 89.5},   # Placeholder
-            "training_latency_ms": {"avg": 234.7, "p95": 456.2}   # Placeholder
+            "service": "training",
+            "status": "healthy",
+            "timestamp": int(time.time()),
+            "database_connection": "successful",
+            "metrics": {
+                "total_models": total_models,
+                "active_models": active_models,
+                "models_trained_24h": recent_models,
+                "avg_training_latency_ms": round(avg_training_latency, 2),
+                "p95_training_latency_ms": round(p95_training_latency, 2)
+            }
         }
     except Exception as e:
         raise HTTPException(
             status_code=503, 
-            detail=f"Service unhealthy: {str(e)}"
+            detail={
+                "service": "training",
+                "status": "unhealthy", 
+                "error": str(e),
+                "timestamp": int(time.time())
+            }
         )

@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy shared modules
 COPY shared/ shared/
 
+# Copy API documentation
+COPY api_docs/ api_docs/
+
 # Copy service code
 COPY services/monitoring_service/main.py .
 

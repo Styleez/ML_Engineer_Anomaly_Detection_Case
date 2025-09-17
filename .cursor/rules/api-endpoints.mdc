@@ -1,0 +1,88 @@
+---
+globs: services/*/main.py
+---
+
+# API Endpoints - Implementation Standards
+
+## Core Endpoint Requirements
+
+### 1. Training API - POST /fit/{series_id}
+**Service**: [services/training_service/main.py](mdc:services/training_service/main.py)
+**Purpose**: Train anomaly detection model for specific sensor/series
+**Performance**: Can be slower (training is expensive)
+**Requirements**:
+- Validate input data (timestamps, values)
+- Implement 3-sigma algorithm from [shared/models/anomaly/ml_model.py](mdc:shared/models/anomaly/ml_model.py)
+- Support model versioning
+- Persist trained models to database
+- Cache model parameters in Redis
+- Return training metadata
+
+**Request/Response**: Use models from [shared/models/anomaly/](mdc:shared/models/anomaly/)
+```python
+# Request: AnomalyTrainRequest (timestamps, values, threshold)
+# Response: AnomalyTrainResponse (series_id, model_version, points_used)
+```
+
+### 2. Inference API - POST /predict/{series_id}  
+**Service**: [services/inference_service/main.py](mdc:services/inference_service/main.py)
+**Purpose**: Fast anomaly prediction for new data points
+**Performance**: CRITICAL - P95 < 100ms, 180+ RPS
+**Requirements**:
+- Load trained model from Redis cache (optimize for speed)
+- Single data point prediction
+- Return boolean anomaly result
+- Minimal database hits (cache-first strategy)
+- Support optional version parameter
+
+**Request/Response**:
+```python
+# Request: AnomalyPredictRequest (timestamp, value)  
+# Response: AnomalyPredictResponse (anomaly, model_version)
+```
+
+### 3. Health Check API - GET /healthcheck
+**Services**: All services implement this endpoint
+**Purpose**: Individual service health and performance metrics
+**Requirements**:
+- Return service-specific health status
+- Include service metrics (training: series_trained, inference: cache_hits)
+- Show latency metrics (training_latency_ms, inference_latency_ms)
+- Database/Redis connectivity status per service
+
+### 4. System Health API - GET /v1/healthcheck
+**Service**: [services/healthcheck_service/main.py](mdc:services/healthcheck_service/main.py)
+**Purpose**: Aggregate health status from all services
+**Requirements**:
+- Aggregate status from all microservices
+- Return overall system health
+- Include per-service status
+
+### 5. Visualization API - GET /plot
+**Service**: [services/plot_service/main.py](mdc:services/plot_service/main.py)
+**Purpose**: Return training data for visualization
+**Requirements**:
+- Return training data points (timestamps, values)
+- Support series_id (mandatory) and version (optional) parameters
+- Query training data from database
+- Return most recent version if version not specified
+
+## Implementation Guidelines
+
+### Error Handling
+- 400: Validation errors (insufficient data, invalid format)
+- 404: Model not found for series_id
+- 500: Internal errors (database, algorithm failures)
+
+### Performance Optimizations
+- Cache model parameters in Redis (inference service)
+- Database connection pooling in [shared/database/database.py](mdc:shared/database/database.py)
+- Async database operations where possible
+- Minimal logging in hot paths
+- Service-specific optimizations per microservice
+
+### Metrics Collection
+Every endpoint should record:
+- Request latency (Prometheus histograms)
+- Request count by status code
+- Business metrics (models trained, predictions made)

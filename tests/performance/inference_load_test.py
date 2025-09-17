@@ -7,22 +7,42 @@ import time
 import numpy as np
 import json
 import statistics
+import os
+import sys
 from datetime import datetime
 from typing import List, Dict, Any
 
-# Service configuration
-INFERENCE_URL = "http://localhost:8001"
-REQUEST_TIMEOUT = 30  # seconds
+# Add project root to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# Import professional test configuration
+from tests.config import (
+    TRAINING_SERVICE_URL,
+    INFERENCE_SERVICE_URL, 
+    DEFAULT_TIMEOUT,
+    TRAINING_TIMEOUT,
+    INFERENCE_TIMEOUT
+)
+
+# Service configuration from professional config
+INFERENCE_URL = INFERENCE_SERVICE_URL
+TRAINING_URL = TRAINING_SERVICE_URL
+REQUEST_TIMEOUT = INFERENCE_TIMEOUT  # Use inference-specific timeout
 CONCURRENT_LIMIT = 50  # Maximum concurrent connections
 
 class InferenceLoadTest:
     def __init__(self):
         self.results: Dict[str, List[float]] = {}
         self.errors: Dict[str, int] = {}
+        self.model_trained = False  # Track if model is already trained
         
     async def setup_test_data(self, session: aiohttp.ClientSession):
-        """Train a model for testing"""
-        print("\n🔧 Setting up test data...")
+        """Train a model for testing (only once)"""
+        if self.model_trained:
+            print("✅ Using existing trained model")
+            return True
+            
+        print("\n🔧 Setting up test data (training model once)...")
         
         # Generate test data
         base_time = int(time.time())
@@ -43,9 +63,9 @@ class InferenceLoadTest:
         # Train model
         try:
             async with session.post(
-                f"http://localhost:8000/fit/load_test_sensor",
+                f"{TRAINING_URL}/fit/load_test_sensor",
                 json=train_data,
-                timeout=REQUEST_TIMEOUT
+                timeout=TRAINING_TIMEOUT
             ) as response:
                 if response.status != 200:
                     error_detail = await response.json()
@@ -54,6 +74,7 @@ class InferenceLoadTest:
                     return False
                 result = await response.json()
                 print(f"✅ Model trained: {result}")
+                self.model_trained = True  # Mark as trained
                 return True
         except Exception as e:
             print(f"❌ Error training model: {e}")
@@ -86,10 +107,17 @@ class InferenceLoadTest:
             return latency
             
         except Exception as e:
-            print(f"❌ Error making prediction: {e}")
+            error_msg = str(e)
+            print(f"❌ Error making prediction: {error_msg}")
+            
+            # Stop test if HTTP 500 errors occur
+            if "HTTP 500" in error_msg:
+                print(f"🛑 Stopping load test due to HTTP 500 errors")
+                raise SystemExit("Load test stopped due to HTTP 500 Internal Server Error")
+            
             raise
 
-    async def run_load_test(self, concurrent_users: int, duration_seconds: int = 30):
+    async def run_load_test(self, concurrent_users: int, duration_seconds: int = 10):
         """Run load test with specified number of concurrent users"""
         print(f"\n🔥 Running inference load test with {concurrent_users} concurrent users for {duration_seconds}s...")
         
@@ -100,7 +128,7 @@ class InferenceLoadTest:
         
         # Create session
         async with aiohttp.ClientSession() as session:
-            # First ensure we have test data
+            # Ensure we have test data (only trains once across all tests)
             if not await self.setup_test_data(session):
                 print("❌ Failed to setup test data")
                 return
@@ -167,9 +195,9 @@ async def main():
     concurrent_users = [1, 10, 100, 200]
     
     for users in concurrent_users:
-        await load_test.run_load_test(users, duration_seconds=30)
+        await load_test.run_load_test(users, duration_seconds=10)
         # Small delay between tests
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
 
 if __name__ == "__main__":
     asyncio.run(main())

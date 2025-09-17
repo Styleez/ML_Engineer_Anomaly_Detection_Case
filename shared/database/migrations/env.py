@@ -6,10 +6,10 @@ import os
 import sys
 
 # Add the parent directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from database import Base
-from models import TrainedModel, PredictionLog, TrainingData, ServiceHealth
+from shared.database.database import Base
+from shared.database.models import TrainedModel, PredictionLog, TrainingData
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

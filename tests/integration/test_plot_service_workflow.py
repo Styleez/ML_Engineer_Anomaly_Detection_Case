@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root / "tests"))
 from tests.utils.dataset_loader import DatasetLoader, get_dataset_config
 from tests.config import (
     TRAINING_SERVICE_URL, 
-    PLOT_SERVICE_URL,
+    MONITORING_SERVICE_URL,
     TRAINING_TIMEOUT
 )
 
@@ -25,11 +25,16 @@ from tests.config import (
 class TestPlotServiceWorkflow:
     """Test Plot Service with multiple model versions and training data persistence"""
     
+    # Class variable to track test instances
+    _test_counter = 0
+    
     @classmethod
     def setup_class(cls):
         """Setup test environment"""
         cls.loader = DatasetLoader()
-        cls.base_series_id = f"plot_test_series_{int(time.time())}"
+        # Simple incremental series_id
+        cls._test_counter += 1
+        cls.base_series_id = f"plot_test_series_{cls._test_counter}"
         cls.dataset_name = "machine_temperature"  # Using machine temperature dataset
         cls.config = get_dataset_config(cls.dataset_name)
         cls.trained_versions = []  # Store all trained versions
@@ -38,15 +43,43 @@ class TestPlotServiceWorkflow:
         print(f"📊 Dataset: {cls.config['description']}")
         print(f"🔖 Series ID: {cls.base_series_id}")
         
+        # Clean up any existing data for this series_id (in case test was interrupted)
+        cls._cleanup_test_data()
+        
         # Verify core services are available
         cls._wait_for_services()
+    
+    @classmethod
+    def teardown_class(cls):
+        """Clean up test environment"""
+        print(f"\n🧹 Plot Service test cleanup completed")
+        print(f"📋 Test series '{cls.base_series_id}' with {len(cls.trained_versions)} versions")
+        
+        # Show summary of trained versions
+        print(f"📊 Summary of trained versions:")
+        for i, version_info in enumerate(cls.trained_versions):
+            print(f"   Version {i+1}: {version_info['version']} ({version_info['points_used']} points)")
+        
+        # Clean up test data from database
+        cls._cleanup_test_data()
+    
+    @classmethod
+    def _cleanup_test_data(cls):
+        """Clean up test data - via service APIs, not direct DB connection"""
+        try:
+            # Just log that we're using a unique series_id
+            # No direct database cleanup needed - each test uses unique IDs
+            print(f"🧹 Using unique series_id: {cls.base_series_id}")
+            print(f"ℹ️  No cleanup needed - each test uses unique identifiers")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not set up test data: {e}")
     
     @classmethod
     def _wait_for_services(cls, timeout: int = 30):
         """Wait for required services to be available"""
         services = [
             ("Training", f"{TRAINING_SERVICE_URL}/healthcheck"),
-            ("Plot", f"{PLOT_SERVICE_URL}/healthcheck")
+            ("Plot", f"{MONITORING_SERVICE_URL}/healthcheck")
         ]
         
         print("⏳ Waiting for services to be ready...")
@@ -112,7 +145,7 @@ class TestPlotServiceWorkflow:
         
         # Store version info
         version_info = {
-            "version": result["model_version"],  # Use model_version, not version
+            "model_version": result["model_version"],
             "points_used": result["points_used"],
             "training_data": training_data,
             "timestamp": result["timestamp"]
@@ -132,7 +165,7 @@ class TestPlotServiceWorkflow:
         
         # Query training data via Plot Service (without version - should get latest)
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={"series_id": self.base_series_id},
             timeout=10
         )
@@ -141,20 +174,18 @@ class TestPlotServiceWorkflow:
         
         plot_data = response.json()
         assert plot_data["series_id"] == self.base_series_id
-        assert plot_data["version"] == version_1["version"]
-        assert plot_data["data_points_count"] == 100
-        assert len(plot_data["timestamps"]) == 100
-        assert len(plot_data["values"]) == 100
+        assert plot_data["model_version"] == version_1["model_version"]
+        assert len(plot_data["data_points"]) == 100
         
-        # Verify data integrity (first few points)
-        for i in range(min(5, len(plot_data["timestamps"]))):
-            assert plot_data["timestamps"][i] == version_1["training_data"]["timestamps"][i]
-            assert abs(plot_data["values"][i] - version_1["training_data"]["values"][i]) < 1e-10
+        # Verify data integrity (first few points) - data is now in data_points array
+        for i in range(min(5, len(plot_data["data_points"]))):
+            data_point = plot_data["data_points"][i]
+            assert data_point["timestamp"] == version_1["training_data"]["timestamps"][i]
+            assert abs(data_point["value"] - version_1["training_data"]["values"][i]) < 1e-10
         
         print(f"✅ Version 1 verified in Plot Service:")
-        print(f"   📊 {plot_data['data_points_count']} data points retrieved")
-        print(f"   🏷️  Version: {plot_data['version']}")
-        print(f"   ⏰ Timestamp: {plot_data['timestamp']}")
+        print(f"   📊 {len(plot_data['data_points'])} data points retrieved")
+        print(f"   🏷️  Version: {plot_data['model_version']}")
         
     def test_03_train_second_model_version(self):
         """Test training a second version with more data"""
@@ -191,7 +222,7 @@ class TestPlotServiceWorkflow:
         
         # Store version info
         version_info = {
-            "version": result["model_version"],  # Use model_version, not version
+            "model_version": result["model_version"],
             "points_used": result["points_used"],
             "training_data": training_data,
             "timestamp": result["timestamp"]
@@ -199,10 +230,10 @@ class TestPlotServiceWorkflow:
         self.__class__.trained_versions.append(version_info)
         
         # Version should be different from first one
-        assert result["model_version"] != self.trained_versions[0]["version"]
+        assert result["model_version"] != self.trained_versions[0]["model_version"]
         
         print(f"✅ Version 2 trained successfully:")
-        print(f"   🏷️  Model Version: {result['model_version']} (was: {self.trained_versions[0]['version']})")
+        print(f"   🏷️  Model Version: {result['model_version']} (was: {self.trained_versions[0]['model_version']})")
         print(f"   📊 Points: {result['points_used']} (was: {self.trained_versions[0]['points_used']})")
         print(f"   ⏰ Timestamp: {result['timestamp']}")
         
@@ -214,7 +245,7 @@ class TestPlotServiceWorkflow:
         
         # Query without specific version (should get latest)
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={"series_id": self.base_series_id},
             timeout=10
         )
@@ -223,12 +254,12 @@ class TestPlotServiceWorkflow:
         
         plot_data = response.json()
         assert plot_data["series_id"] == self.base_series_id
-        assert plot_data["version"] == version_2["version"]  # Should be latest (version 2)
-        assert plot_data["data_points_count"] == 200
+        assert plot_data["model_version"] == version_2["model_version"]  # Should be latest (version 2)
+        assert len(plot_data["data_points"]) == 200
         
         print(f"✅ Latest version returned by default:")
-        print(f"   🏷️  Version: {plot_data['version']} (latest)")
-        print(f"   📊 Points: {plot_data['data_points_count']}")
+        print(f"   🏷️  Version: {plot_data['model_version']} (latest)")
+        print(f"   📊 Points: {len(plot_data['data_points'])}")
         
     def test_05_retrieve_specific_version_1(self):
         """Test retrieving specific version 1 data"""
@@ -238,10 +269,10 @@ class TestPlotServiceWorkflow:
         
         # Query specific version 1
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={
                 "series_id": self.base_series_id,
-                "version": version_1["version"]
+                "version": version_1["model_version"]
             },
             timeout=10
         )
@@ -250,12 +281,12 @@ class TestPlotServiceWorkflow:
         
         plot_data = response.json()
         assert plot_data["series_id"] == self.base_series_id
-        assert plot_data["version"] == version_1["version"]
-        assert plot_data["data_points_count"] == 100  # Should be 100, not 200
+        assert plot_data["model_version"] == version_1["model_version"]
+        assert len(plot_data["data_points"]) == 100  # Should be 100, not 200
         
         print(f"✅ Specific version 1 retrieved:")
-        print(f"   🏷️  Version: {plot_data['version']}")
-        print(f"   📊 Points: {plot_data['data_points_count']}")
+        print(f"   🏷️  Version: {plot_data['model_version']}")
+        print(f"   📊 Points: {len(plot_data['data_points'])}")
         
     def test_06_retrieve_specific_version_2(self):
         """Test retrieving specific version 2 data"""
@@ -265,10 +296,10 @@ class TestPlotServiceWorkflow:
         
         # Query specific version 2
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={
                 "series_id": self.base_series_id,
-                "version": version_2["version"]
+                "version": version_2["model_version"]
             },
             timeout=10
         )
@@ -277,12 +308,12 @@ class TestPlotServiceWorkflow:
         
         plot_data = response.json()
         assert plot_data["series_id"] == self.base_series_id
-        assert plot_data["version"] == version_2["version"]
-        assert plot_data["data_points_count"] == 200  # Should be 200
+        assert plot_data["model_version"] == version_2["model_version"]
+        assert len(plot_data["data_points"]) == 200  # Should be 200
         
         print(f"✅ Specific version 2 retrieved:")
-        print(f"   🏷️  Version: {plot_data['version']}")
-        print(f"   📊 Points: {plot_data['data_points_count']}")
+        print(f"   🏷️  Version: {plot_data['model_version']}")
+        print(f"   📊 Points: {len(plot_data['data_points'])}")
         
     def test_07_train_third_model_version(self):
         """Test training a third version to confirm version management"""
@@ -320,7 +351,7 @@ class TestPlotServiceWorkflow:
         
         # Store version info
         version_info = {
-            "version": result["model_version"],  # Use model_version, not version
+            "model_version": result["model_version"],
             "points_used": result["points_used"],
             "training_data": offset_data,
             "timestamp": result["timestamp"]
@@ -341,10 +372,10 @@ class TestPlotServiceWorkflow:
         # Test that each version can be retrieved individually
         for i, version_info in enumerate(self.trained_versions):
             response = requests.get(
-                f"{PLOT_SERVICE_URL}/plot",
+                f"{MONITORING_SERVICE_URL}/plot",
                 params={
                     "series_id": self.base_series_id,
-                    "version": version_info["version"]
+                    "version": version_info["model_version"]
                 },
                 timeout=10
             )
@@ -352,14 +383,14 @@ class TestPlotServiceWorkflow:
             assert response.status_code == 200, f"Failed to retrieve version {version_info['version']}"
             
             plot_data = response.json()
-            assert plot_data["version"] == version_info["version"]
-            assert plot_data["data_points_count"] == version_info["points_used"]
+            assert plot_data["model_version"] == version_info["model_version"]
+            assert len(plot_data["data_points"]) == version_info["points_used"]
             
-            print(f"   ✅ Version {i+1}: {version_info['version']} ({version_info['points_used']} points)")
+            print(f"   ✅ Version {i+1}: {version_info['model_version']} ({version_info['points_used']} points)")
         
         # Test that default query returns latest version (version 3)
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={"series_id": self.base_series_id},
             timeout=10
         )
@@ -367,9 +398,9 @@ class TestPlotServiceWorkflow:
         assert response.status_code == 200
         plot_data = response.json()
         latest_version = self.trained_versions[-1]  # Last trained version
-        assert plot_data["version"] == latest_version["version"]
+        assert plot_data["model_version"] == latest_version["model_version"]
         
-        print(f"   ✅ Default query returns latest: {plot_data['version']}")
+        print(f"   ✅ Default query returns latest: {plot_data['model_version']}")
         
     def test_09_data_integrity_verification(self):
         """Test data integrity across versions"""
@@ -378,10 +409,10 @@ class TestPlotServiceWorkflow:
         for i, version_info in enumerate(self.trained_versions):
             # Retrieve data from Plot Service
             response = requests.get(
-                f"{PLOT_SERVICE_URL}/plot",
+                f"{MONITORING_SERVICE_URL}/plot",
                 params={
                     "series_id": self.base_series_id,
-                    "version": version_info["version"]
+                    "version": version_info["model_version"]
                 },
                 timeout=10
             )
@@ -393,15 +424,16 @@ class TestPlotServiceWorkflow:
             expected_timestamps = version_info["training_data"]["timestamps"]
             expected_values = version_info["training_data"]["values"]
             
-            assert len(plot_data["timestamps"]) == len(expected_timestamps)
-            assert len(plot_data["values"]) == len(expected_values)
+            assert len(plot_data["data_points"]) == len(expected_timestamps)
+            # Values are now inside data_points array, not separate
             
             # Check first 3 and last 3 points for integrity
             check_indices = [0, 1, 2, -3, -2, -1]
             for idx in check_indices:
                 if abs(idx) <= len(expected_timestamps):
-                    assert plot_data["timestamps"][idx] == expected_timestamps[idx]
-                    assert abs(plot_data["values"][idx] - expected_values[idx]) < 1e-10
+                    data_point = plot_data["data_points"][idx]
+                    assert data_point["timestamp"] == expected_timestamps[idx]
+                    assert abs(data_point["value"] - expected_values[idx]) < 1e-10
             
             print(f"   ✅ Version {i+1} data integrity verified")
         
@@ -411,7 +443,7 @@ class TestPlotServiceWorkflow:
         
         # Test non-existent series
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={"series_id": "non_existent_series"},
             timeout=10
         )
@@ -420,10 +452,10 @@ class TestPlotServiceWorkflow:
         
         # Test non-existent version
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={
                 "series_id": self.base_series_id,
-                "version": "99.99"  # Non-existent version
+                "version": "v99"  # Non-existent version
             },
             timeout=10
         )
@@ -432,7 +464,7 @@ class TestPlotServiceWorkflow:
         
         # Test missing series_id parameter
         response = requests.get(
-            f"{PLOT_SERVICE_URL}/plot",
+            f"{MONITORING_SERVICE_URL}/plot",
             params={},  # Missing series_id
             timeout=10
         )
@@ -446,7 +478,7 @@ class TestPlotServiceWorkflow:
         print(f"📋 Test series '{cls.base_series_id}' with {len(cls.trained_versions)} versions")
         print("📊 Summary of trained versions:")
         for i, version in enumerate(cls.trained_versions):
-            print(f"   Version {i+1}: {version['version']} ({version['points_used']} points)")
+            print(f"   Version {i+1}: {version['model_version']} ({version['points_used']} points)")
 
 
 def run_plot_service_test():

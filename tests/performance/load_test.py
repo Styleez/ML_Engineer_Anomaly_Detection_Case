@@ -15,13 +15,23 @@ import os
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Service configuration
-INFERENCE_URL = "http://localhost:8001"
-TRAINING_URL = "http://localhost:8000"
+# Import professional test configuration
+from tests.config import (
+    TRAINING_SERVICE_URL,
+    INFERENCE_SERVICE_URL, 
+    DEFAULT_TIMEOUT,
+    TRAINING_TIMEOUT,
+    INFERENCE_TIMEOUT,
+    TEST_SERIES_PREFIX
+)
+
+# Service configuration from professional config
+INFERENCE_URL = INFERENCE_SERVICE_URL
+TRAINING_URL = TRAINING_SERVICE_URL
 
 # Test configuration
-SERIES_ID = "load_test_sensor"
-REQUEST_TIMEOUT = 10  # seconds
+SERIES_ID = f"{TEST_SERIES_PREFIX}_load_test"
+REQUEST_TIMEOUT = DEFAULT_TIMEOUT  # seconds
 CONCURRENT_LIMIT = 50  # Maximum concurrent connections
 
 class LoadTest:
@@ -54,7 +64,7 @@ class LoadTest:
             async with session.post(
                 f"{TRAINING_URL}/fit/{SERIES_ID}",
                 json=train_data,
-                timeout=REQUEST_TIMEOUT
+                timeout=TRAINING_TIMEOUT
             ) as response:
                 if response.status != 200:
                     error_detail = await response.json()
@@ -85,7 +95,7 @@ class LoadTest:
             async with session.post(
                 f"{INFERENCE_URL}/predict/{SERIES_ID}",
                 json=data,
-                timeout=REQUEST_TIMEOUT
+                timeout=INFERENCE_TIMEOUT
             ) as response:
                 if response.status != 200:
                     raise Exception(f"HTTP {response.status}")
@@ -95,7 +105,14 @@ class LoadTest:
             return latency
             
         except Exception as e:
-            print(f"❌ Error making prediction: {e}")
+            error_msg = str(e)
+            print(f"❌ Error making prediction: {error_msg}")
+            
+            # Stop test if HTTP 500 errors occur
+            if "HTTP 500" in error_msg:
+                print(f"🛑 Stopping load test due to HTTP 500 errors")
+                raise SystemExit("Load test stopped due to HTTP 500 Internal Server Error")
+            
             raise
 
     async def run_load_test(self, concurrent_users: int, duration_seconds: int = 10):
@@ -122,6 +139,9 @@ class LoadTest:
                     try:
                         latency = await self.make_prediction(session)
                         self.results[test_key].append(latency)
+                    except SystemExit:
+                        # Re-raise SystemExit to stop the test immediately
+                        raise
                     except Exception:
                         self.errors[test_key] += 1
             
@@ -130,6 +150,12 @@ class LoadTest:
             tasks = []
             
             while time.time() < end_time:
+                # Check if too many errors (stop early if > 50% error rate)
+                total_requests = len(self.results[test_key]) + self.errors[test_key]
+                if total_requests > 10 and (self.errors[test_key] / total_requests) > 0.5:
+                    print(f"🛑 Stopping test early: Error rate > 50% ({self.errors[test_key]}/{total_requests})")
+                    break
+                
                 # Create tasks for each user
                 for _ in range(concurrent_users):
                     task = asyncio.create_task(controlled_request())
@@ -174,7 +200,7 @@ async def main():
     concurrent_users = [1, 10, 100, 200, 500]
     
     for users in concurrent_users:
-        await load_test.run_load_test(users, duration_seconds=30)
+        await load_test.run_load_test(users, duration_seconds=10)
         # Small delay between tests
         await asyncio.sleep(5)
 

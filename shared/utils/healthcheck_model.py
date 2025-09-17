@@ -26,7 +26,7 @@ class SystemHealthResponse(BaseResponseModel):
                 "training_latency_ms": {"avg": 234.7, "p95": 456.2, "p99": 678.9, "count": 25},
                 "system_resources": {"cpu_usage": 45.2, "memory_usage": 67.8},
                 "timestamp": "2024-01-01T12:00:00Z",
-                "version": "1.0"
+                "model_version": "v1"
             }
         }
 
