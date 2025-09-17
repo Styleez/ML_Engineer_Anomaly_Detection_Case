@@ -120,6 +120,34 @@ api_docs/               # OpenAPI specification
 - Docker & Docker Compose
 - Python 3.11+ (for local testing)
 
+## ⚙️ Environment Configuration
+
+The system uses environment variables for configuration. For production deployment:
+
+1. Copy the example environment file:
+   ```bash
+   cp env.example .env
+   ```
+
+2. Edit `.env` with your settings:
+   ```bash
+   # Required variables
+   DATABASE_URL=postgresql://user:password@host:5432/database
+   ENVIRONMENT=production
+   
+   # Optional optimizations
+   DB_POOL_SIZE=20
+   REDIS_HOST=localhost
+   ```
+
+**Key Variables:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `ENVIRONMENT` - `development|test|production`
+- `REDIS_HOST/PORT` - Redis configuration for caching
+- `DB_POOL_SIZE` - Database connection pool size
+
+**Note:** For Docker deployment (`make start`), environment variables are pre-configured in `docker-compose.test.yml`.
+
 ## 🤝 Contributing
 
 1. Fork the repository
