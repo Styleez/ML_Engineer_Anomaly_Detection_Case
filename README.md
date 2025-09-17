@@ -147,15 +147,3 @@ The system uses environment variables for configuration. For production deployme
 - `DB_POOL_SIZE` - Database connection pool size
 
 **Note:** For Docker deployment (`make start`), environment variables are pre-configured in `docker-compose.test.yml`.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Create Pull Request
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
