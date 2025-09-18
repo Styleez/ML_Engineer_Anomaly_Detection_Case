@@ -1,0 +1,39 @@
+# Example Terraform variables file
+# Copy this to terraform.tfvars and update with your values
+
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+
+# BigQuery Configuration
+bigquery_dataset  = "anomaly_detection"
+bigquery_location = "US"
+
+# Cloud Run Configuration
+cloud_run_cpu           = "1"
+cloud_run_memory        = "512Mi"
+cloud_run_max_instances = 10
+cloud_run_concurrency   = 80
+
+# Service Names
+training_service_name   = "anomaly-training"
+inference_service_name  = "anomaly-inference"
+monitoring_service_name = "anomaly-monitoring"
+
+# Docker Configuration
+docker_registry = "gcr.io"
+image_tag      = "latest"
+
+# User Configuration
+user_email  = "your-email@domain.com"
+admin_email = "admin@domain.com"
+
+# Security
+enable_authentication = false
+
+# Monitoring
+metrics_retention_days = 30
+
+# Budget Alerts (optional)
+budget_alert_threshold = 50.00
+budget_alert_email     = "billing@domain.com"
+billing_account_id     = ""  # Your billing account ID

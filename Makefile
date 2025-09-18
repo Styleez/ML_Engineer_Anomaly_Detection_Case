@@ -30,8 +30,8 @@ test-integration: ## Run integration tests only (requires Docker services)
 	python -m pytest tests/integration/ -v --tb=short
 
 test-performance: ## Run performance/load tests (requires Docker services)
-	cd tests/performance && python inference_load_test.py
-	cd tests/performance && python training_load_test.py
+	python -m tests.performance.inference_load_test
+	python -m tests.performance.training_load_test
 
 test-coverage: ## Run tests with coverage report
 	python -m pytest tests/unit/ --cov=shared --cov=services --cov-report=html --cov-report=term
@@ -140,8 +140,8 @@ start: ## Start all services (one command to rule them all)
 stop: ## Stop all services
 	docker-compose -f docker-compose.test.yml down -v
 
-test-all: ## Run all tests (unit + integration + performance)
-	@echo "🧪 Running all tests..."
+test-all: ## Run all tests (unit + integration + e2e + performance)
+	@echo "🧪 Running Complete Test Suite..."
 	@echo ""
 	@echo "1️⃣ Unit Tests (38 tests):"
 	python -m pytest tests/unit/ -v --tb=short
@@ -151,10 +151,28 @@ test-all: ## Run all tests (unit + integration + performance)
 	@sleep 5
 	python -m pytest tests/integration/ -v --tb=short
 	@echo ""
-	@echo "3️⃣ Performance Test (light load):"
-	python -c "import sys; sys.path.append('.'); from tests.performance.inference_load_test import InferenceLoadTest; import asyncio; test = InferenceLoadTest(); asyncio.run(test.run_load_test(100, 10))"
+	@echo "3️⃣ End-to-End Tests:"
+	python -m pytest tests/integration/test_end_to_end.py -v --tb=short
+	@echo ""
+	@echo "4️⃣ Performance Tests:"
+	@echo "   • Light Load (10 users, 30s):"
+	python -c "import sys; sys.path.append('.'); from tests.performance.inference_load_test import InferenceLoadTest; import asyncio; test = InferenceLoadTest(); asyncio.run(test.run_load_test(10, 30))"
+	@echo "   • Training Load Test:"
+	python -m tests.performance.training_load_test
+	@echo "   • Heavy Load (50 users, 60s):"
+	python -c "import sys; sys.path.append('.'); from tests.performance.inference_load_test import InferenceLoadTest; import asyncio; test = InferenceLoadTest(); asyncio.run(test.run_load_test(50, 60))"
+	@echo ""
+	@echo "5️⃣ Complete Workflow Test:"
+	python -m pytest tests/integration/test_complete_workflow.py -v --tb=short
 	@echo ""
 	@echo "✅ All tests completed!"
+	@echo ""
+	@echo "📊 Test Summary:"
+	@echo "   • Unit Tests: 38 tests"
+	@echo "   • Integration Tests: 23 tests"
+	@echo "   • End-to-End Tests: Complete"
+	@echo "   • Performance Tests: Light + Heavy Load"
+	@echo "   • Workflow Tests: Complete"
 
 test-integration: ## Run integration tests only (requires Docker services)
 	@echo "🧪 Running integration tests..."

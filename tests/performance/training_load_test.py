@@ -13,14 +13,21 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 # Add project root to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(project_root)
 
 # Import professional test configuration
-from tests.config import (
-    TRAINING_SERVICE_URL,
-    TRAINING_TIMEOUT,
-    TEST_SERIES_PREFIX
-)
+try:
+    from tests.config import (
+        TRAINING_SERVICE_URL,
+        TRAINING_TIMEOUT,
+        TEST_SERIES_PREFIX
+    )
+except ImportError:
+    # Fallback configuration if running standalone
+    TRAINING_SERVICE_URL = "http://localhost:8000"
+    TRAINING_TIMEOUT = 60
+    TEST_SERIES_PREFIX = "test_sensor"
 
 # Service configuration from professional config
 TRAINING_URL = TRAINING_SERVICE_URL

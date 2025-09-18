@@ -1,0 +1,108 @@
+# Google Cloud Build configuration
+steps:
+  # Build Training Service
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/anomaly-training:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/anomaly-training:latest'
+      - '-f'
+      - 'training-service/Dockerfile'
+      - '.'
+
+  # Build Inference Service  
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t' 
+      - 'gcr.io/$PROJECT_ID/anomaly-inference:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/anomaly-inference:latest'
+      - '-f'
+      - 'inference-service/Dockerfile'
+      - '.'
+
+  # Build Monitoring Service
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/anomaly-monitoring:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/anomaly-monitoring:latest'
+      - '-f'
+      - 'monitoring-service/Dockerfile'
+      - '.'
+
+  # Push Training Service
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/anomaly-training:latest']
+
+  # Push Inference Service
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/anomaly-inference:latest']
+
+  # Push Monitoring Service
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/anomaly-monitoring:latest']
+
+  # Deploy Training Service to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'anomaly-training'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/anomaly-training:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+
+  # Deploy Inference Service to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'anomaly-inference'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/anomaly-inference:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+
+  # Deploy Monitoring Service to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'anomaly-monitoring'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/anomaly-monitoring:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+
+images:
+  - 'gcr.io/$PROJECT_ID/anomaly-training:latest'
+  - 'gcr.io/$PROJECT_ID/anomaly-inference:latest'
+  - 'gcr.io/$PROJECT_ID/anomaly-monitoring:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
